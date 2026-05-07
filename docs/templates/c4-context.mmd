@@ -1,0 +1,27 @@
+C4Context
+    title System Context Diagram for <System Name>
+
+    %% External actors (people)
+    Person(user, "User", "End user of the system")
+    Person(admin, "Administrator", "System administrator")
+
+    %% The system being designed
+    System(system, "<System Name>", "Brief description of what this system does")
+
+    %% External systems
+    System_Ext(authProvider, "Auth Provider", "e.g. Auth0, Cognito — handles authentication")
+    System_Ext(emailService, "Email Service", "e.g. SendGrid — sends transactional emails")
+    System_Ext(paymentGateway, "Payment Gateway", "e.g. Stripe — processes payments")
+    System_Ext(analytics, "Analytics", "e.g. PostHog — tracks user behavior")
+
+    %% Relationships
+    Rel(user, system, "Uses", "HTTPS")
+    Rel(admin, system, "Manages", "HTTPS")
+
+    Rel(system, authProvider, "Authenticates users via", "OAuth 2.0 / OIDC")
+    Rel(system, emailService, "Sends emails via", "SMTP / API")
+    Rel(system, paymentGateway, "Charges customers via", "REST API")
+    Rel(system, analytics, "Sends events to", "HTTPS")
+
+    %% Layout hints (optional)
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

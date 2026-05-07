@@ -1,0 +1,45 @@
+sequenceDiagram
+    title <Flow Name> — e.g. User Login Flow
+
+    actor User
+    participant SPA as Web App<br/>(React)
+    participant API as API<br/>(Node.js)
+    participant Auth as Auth Provider
+    participant DB as PostgreSQL
+    participant Cache as Redis
+
+    %% Happy path
+    User->>SPA: Submits login form<br/>(email, password)
+    SPA->>API: POST /auth/login<br/>{email, password}
+
+    API->>Auth: Verify credentials
+    Auth-->>API: Access token + refresh token
+
+    API->>DB: SELECT user WHERE email = ?
+    DB-->>API: User record
+
+    API->>Cache: SET session:{userId}<br/>(TTL 24h)
+    Cache-->>API: OK
+
+    API-->>SPA: 200 OK<br/>{user, accessToken}
+    SPA-->>User: Redirect to dashboard
+
+    %% Error path — invalid credentials
+    Note over User,Cache: Alternative: Invalid credentials
+
+    User->>SPA: Submits login form (wrong password)
+    SPA->>API: POST /auth/login
+    API->>Auth: Verify credentials
+    Auth-->>API: 401 Unauthorized
+    API-->>SPA: 401 Unauthorized<br/>{error: "invalid_credentials"}
+    SPA-->>User: Show error message
+
+    %% Error path — rate limited
+    Note over User,Cache: Alternative: Too many attempts
+
+    User->>SPA: Submits login form (5th attempt in 1 min)
+    SPA->>API: POST /auth/login
+    API->>Cache: INCR rate_limit:{ip}
+    Cache-->>API: 6 (over threshold)
+    API-->>SPA: 429 Too Many Requests
+    SPA-->>User: Show "try again later"

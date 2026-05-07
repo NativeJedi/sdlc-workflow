@@ -1,0 +1,37 @@
+C4Container
+    title Container Diagram for <System Name>
+
+    %% External actors
+    Person(user, "User", "End user")
+    Person(admin, "Administrator", "System administrator")
+
+    %% External systems
+    System_Ext(authProvider, "Auth Provider", "Auth0 / Cognito")
+    System_Ext(emailService, "Email Service", "SendGrid")
+
+    %% System boundary
+    System_Boundary(system, "<System Name>") {
+        Container(spa, "Web Application", "React, TypeScript, Vite", "Single-page app served to browsers")
+        Container(api, "API", "Node.js, Express/Fastify, TypeScript", "REST API handling business logic")
+        Container(worker, "Background Worker", "Node.js, BullMQ", "Processes async jobs (emails, exports)")
+        ContainerDb(db, "Database", "PostgreSQL", "Stores user data, business entities")
+        ContainerDb(cache, "Cache", "Redis", "Session store, rate limit counters, queue backend")
+    }
+
+    %% User-facing relationships
+    Rel(user, spa, "Uses", "HTTPS")
+    Rel(admin, spa, "Manages via", "HTTPS")
+
+    %% Internal relationships
+    Rel(spa, api, "Calls", "JSON/HTTPS")
+    Rel(api, db, "Reads from and writes to", "SQL/TCP")
+    Rel(api, cache, "Reads/writes session data", "Redis protocol")
+    Rel(api, worker, "Enqueues jobs to", "Redis (BullMQ)")
+    Rel(worker, db, "Reads/writes", "SQL/TCP")
+    Rel(worker, cache, "Pulls jobs from", "Redis protocol")
+
+    %% External integrations
+    Rel(api, authProvider, "Validates tokens via", "JWKS / OIDC")
+    Rel(worker, emailService, "Sends emails via", "REST API")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
