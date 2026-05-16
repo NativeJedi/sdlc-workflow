@@ -1,11 +1,11 @@
 ---
 name: sdlc-ba
-description: Use this skill when the user has a raw product idea, feature request, or vague problem statement and needs a structured Feature Spec (problem, users, user stories, FR, NFR, product tradeoffs, acceptance criteria). Triggers include "write a feature spec", "do business analysis", "act as a BA", "draft requirements for…", "I have an idea for…", "let's spec out…", "BA on this feature", "sdlc-ba". Produces 01-feature-spec.md inside docs/features/FEAT-NNN-{slug}/ in Claude Code, or as an inline markdown artifact in chat. Does NOT make technical decisions (those belong to sdlc-adr), does NOT decompose into tasks (sdlc-pm), does NOT design UI (sdlc-design).
+description: Use this skill when the user has a raw product idea, feature request, or vague problem statement and needs a structured Feature Spec (problem, users, user stories, FR, NFR, product tradeoffs, acceptance criteria). Triggers include "write a feature spec", "do business analysis", "act as a BA", "draft requirements for…", "I have an idea for…", "let's spec out…", "BA on this feature", "sdlc-ba". Produces a deliberately compact 01-feature-spec.md inside docs/features/FEAT-NNN-{slug}/ in Claude Code, or as an inline markdown artifact in chat — every section is under a tight length budget, empty sections are dropped, no padding. Does NOT make technical decisions (those belong to sdlc-adr), does NOT decompose into tasks (sdlc-pm), does NOT design UI (sdlc-design).
 ---
 
 # sdlc-ba — Business Analyst
 
-This skill turns a raw product idea into a **Feature Spec** — a structured document that captures the *what* and *why*, never the *how*.
+This skill turns a raw product idea into a **Feature Spec** — a structured, deliberately compact document that captures the *what* and *why*, never the *how*. Density beats completeness: every section has a tight length budget, empty sections are dropped, and padding is forbidden.
 
 The skill is intentionally narrow: it produces one artifact (`01-feature-spec.md`), then stops. It does not auto-chain into design, ADR, or task breakdown.
 
@@ -103,29 +103,43 @@ Do **not** loop. One batch, then move on. Anything still unclear becomes an entr
 
 ### Step 4 — Write the spec
 
-Produce `01-feature-spec.md` strictly following the template at `references/feature-spec.md` (next to this `SKILL.md`). Section-by-section guidance:
+Produce `01-feature-spec.md` strictly following the template at `references/feature-spec.md` (next to this `SKILL.md`).
 
-| Section | Rule |
-|---|---|
-| Header (Feature ID, Status, Author, dates) | `Status: Draft`. `Author: sdlc-ba`. Dates in `YYYY-MM-DD`. |
-| 1. Problem Statement | 2–4 sentences. Problem only — never the solution. |
-| 2. Users & Stakeholders | Concrete roles with their needs. Avoid "users" as a single bucket. |
-| 3. Goals | Measurable where possible ("reduce checkout drop-off"), qualitative is acceptable when no metric exists yet. |
-| 4. Non-Goals | Explicit exclusions. This is scope control, not a placeholder — leave the section out only if there are genuinely no exclusions. |
-| 5. User Stories | `As a <role>, I want to <action> so that <outcome>`. Number them `US-1`, `US-2`, … |
-| 6. Functional Requirements | Each row testable. Reference user stories in the `Related US` column. Use shall-language. |
-| 7. Non-Functional Requirements | Cover only the categories that **actually apply** — drop empty rows. Common omissions are fine; padding is not. |
-| 8. Product Tradeoffs | Scope/time/value decisions only. **Never** technical tradeoffs (DB choice, framework choice → ADR). |
-| 9. Acceptance Criteria | Distinct from FRs. Phrased as user-observable outcomes, not implementation checks. |
-| 10. Out of Scope | Items considered and explicitly deferred to v2/backlog. |
-| 11. Open Questions | Whatever remained unresolved after Step 3. Honest > exhaustive. |
-| 12. References | Related FEAT-IDs, ADRs (likely "to be created"), external links. |
+**Compactness rules (apply to every spec, no exceptions):**
+
+- **One-screen target.** The full spec should fit on roughly one printed page (≈ 250–400 words of body text excluding tables). Anything beyond that is a red flag — split the feature or trim.
+- **Drop empty sections entirely** (don't keep the heading + "N/A"). The only sections that are always present: Header, 1. Problem Statement, 5. User Stories, 6. Functional Requirements, 9. Acceptance Criteria. Everything else appears only when it carries real content.
+- **Bullets > prose** wherever possible. Each bullet is one short sentence. No multi-clause bullets with semicolons.
+- **No restatement.** Never paraphrase the same idea across §1 / §3 / §9. Pick the section that owns it and link from the others by ID.
+- **No definitions, no glossary, no background paragraphs.** Assume the reader knows the product.
+- **Numbers, not adjectives.** Either give the number or omit the claim. "Fast", "scalable", "robust" without a metric → either ask in Step 3 or drop to §11 Open Questions.
+- **Tables stay narrow.** Wrap text instead of stretching columns; rows must fit one logical line in source.
+
+Section-by-section guidance (length budgets are hard limits, not targets):
+
+| Section | Rule | Hard limit |
+|---|---|---|
+| Header (Feature ID, Status, Author, dates) | `Status: Draft`. `Author: sdlc-ba`. Dates in `YYYY-MM-DD`. | — |
+| 1. Problem Statement | Problem only — never the solution. One paragraph. | ≤ 3 sentences |
+| 2. Users & Stakeholders | Concrete roles + one-line need. Drop section if there's only one obvious role and it's already implied by the problem. | ≤ 4 bullets |
+| 3. Goals | Outcomes, ideally with a number. Drop section if all goals would just restate the problem. | ≤ 3 bullets |
+| 4. Non-Goals | Explicit exclusions only. Drop section if none — do not write "none". | ≤ 3 bullets |
+| 5. User Stories | `As a <role>, I want to <action> so that <outcome>`. Number `US-1`, `US-2`, … Each story on one line. | ≤ 5 stories |
+| 6. Functional Requirements | Each row testable, references US in `Related US`. Use shall-language. Merge near-duplicates aggressively. | ≤ 8 rows |
+| 7. Non-Functional Requirements | Only categories that actually apply. Drop the whole section if none has a real number/constraint. | ≤ 5 rows |
+| 8. Product Tradeoffs | Scope/time/value only. **Never** technical tradeoffs. Drop section if no real tradeoff was made. | ≤ 3 bullets |
+| 9. Acceptance Criteria | User-observable outcomes, not implementation checks. Distinct from FRs — do not duplicate. | ≤ 5 criteria |
+| 10. Out of Scope | Items explicitly deferred. Drop section if nothing was deferred. | ≤ 4 bullets |
+| 11. Open Questions | Whatever remained after Step 3. Honest > exhaustive. Drop section if none. | ≤ 4 bullets |
+| 12. References | IDs and links only. No commentary. Drop section if empty. | ≤ 4 lines |
 
 Hard constraints on the artifact:
 - **English** for the spec content.
 - No code. No DB schemas. No tech-stack mentions. No UI mockups. Those belong to other phases.
 - No effort estimates, no risk register — out of scope for this skill.
 - Don't invent details. If the user said "fast", don't write "p95 < 200ms" — either ask in Step 3 or leave it as an Open Question.
+- **No padding.** No filler sentences like "This section describes…", no "TBD" placeholders, no rephrased headings as the first sentence of a section.
+- If a hard limit above is hit, **trim before adding** — merge requirements, drop a non-critical story, or move detail to Open Questions.
 
 ### Step 5 — Deliver
 
@@ -182,6 +196,9 @@ Do **not** ask "ready to proceed?". Do **not** auto-invoke another skill.
 - Auto-numbering without confirming the proposed `FEAT-NNN-slug` first.
 - Asking clarifying questions one at a time — always batch in Step 3.
 - Writing the spec in any language other than English.
+- Padding the spec to look thorough (boilerplate sections, restating headings, filler sentences).
+- Keeping empty sections (drop the whole heading instead of writing 'N/A' or 'TBD').
+- Producing a spec longer than the per-section length budgets in Step 4.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: sdlc-pm
-description: Use this skill when the user has an approved Feature Spec (01-feature-spec.md) and the relevant ADR(s) (03-adr.md or 03-adr-NN-{slug}.md) and needs the feature decomposed into independently implementable tasks. Triggers include "break this into tasks", "act as a PM", "plan the work", "decompose the feature", "create task files for FEAT-NNN", "let's split this into tickets", "sdlc-pm". Produces task files in 04-tasks/T-NNN-{slug}.md inside docs/features/FEAT-NNN-{slug}/ in Claude Code, or as inline markdown artifacts in chat. Each task is sized to fit one sdlc-impl run, references FR/NFR/AC from the spec, respects ADR constraints, and declares Priority, Depends on. Delivers in two stages — first a plan (task list with priorities and dependencies) confirmed via AskUserQuestion, then the actual files. Does NOT estimate effort, does NOT identify risks, does NOT split by UI/Frontend/Backend layers (sdlc-impl decides that), does NOT write code (sdlc-impl), does NOT write the spec (sdlc-ba) or ADR (sdlc-adr).
+description: Use this skill when the user has an approved Feature Spec (01-feature-spec.md) and the relevant ADR(s) (03-adr.md or 03-adr-NN-{slug}.md) and the work has at least one pair of independently implementable pieces that can be built in parallel without blocking each other. Triggers include "break this into tasks", "act as a PM", "plan the work", "decompose the feature", "create task files for FEAT-NNN", "let's split this into tickets", "sdlc-pm". Only creates task files when the dependency graph actually has parallelism — i.e. at least one wave contains two or more independent tasks. If the work would be a single task or a purely sequential chain (every task blocks the next), the skill skips file creation and recommends running sdlc-impl in one pass instead. Produces task files in 04-tasks/T-NNN-{slug}.md inside docs/features/FEAT-NNN-{slug}/ in Claude Code, or as inline markdown artifacts in chat. Each task is sized to fit one sdlc-impl run, references FR/NFR/AC from the spec, respects ADR constraints, and declares Priority, Depends on. Delivers in two stages — first a plan (task list with priorities and dependencies) confirmed via AskUserQuestion, then the actual files. Does NOT estimate effort, does NOT identify risks, does NOT split by UI/Frontend/Backend layers (sdlc-impl decides that), does NOT write code (sdlc-impl), does NOT write the spec (sdlc-ba) or ADR (sdlc-adr).
 ---
 
 # sdlc-pm — Project Manager
@@ -8,6 +8,8 @@ description: Use this skill when the user has an approved Feature Spec (01-featu
 This skill turns a **Feature Spec** plus **ADR(s)** into a set of **task files** — concrete, scoped units of work that `sdlc-impl` can pick up one at a time.
 
 The skill is intentionally narrow: it produces `04-tasks/T-NNN-<slug>.md` files (one per task), then stops. It does **not** auto-chain into implementation. It does **not** estimate effort. It does **not** maintain a risk register. Those rituals are deliberately out of scope for this skill.
+
+**Parallelization gate (hard precondition for writing files).** Task files only exist when they unlock parallel work. If the decomposition yields a single task, or a strictly sequential chain (every task `T-N+1` depends on `T-N`), this skill produces **no task files** and instead recommends running `sdlc-impl` in one focused pass with a brief plan inline. Rationale: a task file is only worth its overhead when two or more pieces can be implemented independently — otherwise it is ceremony around what is really one unit of work.
 
 The skill **respects existing decisions**: the Feature Spec defines *what*, the ADR defines *how* at the architectural level, and the existing codebase defines the conventions any task must follow. The skill aligns with all three or surfaces conflicts explicitly — never silently overrides.
 
@@ -118,7 +120,31 @@ For each candidate, draft (mentally or as scratch notes):
 
 Number the tasks `T-001`, `T-002`, … zero-padded to 3 digits. Numbering is **scoped to the feature**, not global. If existing tasks live under `04-tasks/`, continue from the highest existing ID.
 
-Compute the topological "waves" (Wave 1: tasks with no deps; Wave 2: tasks that only depend on Wave 1; …). Used in the summary to communicate parallelization opportunities; **not** persisted as a separate artifact.
+Compute the topological "waves" (Wave 1: tasks with no deps; Wave 2: tasks that only depend on Wave 1; …). Waves drive both the summary and the **parallelization gate** in Step 2.5; they are **not** persisted as a separate artifact.
+
+### Step 2.5 — Parallelization gate (mandatory before any clarification or plan checkpoint)
+
+Evaluate the candidate plan against the parallelization rule. The gate passes if **both**:
+
+1. Total candidate task count is ≥ 2, **and**
+2. At least one wave (any wave, not necessarily Wave 1) contains ≥ 2 tasks that can be implemented in parallel without blocking each other.
+
+If the gate **passes** → proceed to Step 3.
+
+If the gate **fails** → do **not** write any task files. Instead, surface this to the user as a single concise message with three things:
+
+1. A one-line verdict ("This work is a single task" / "This work is a strictly sequential chain — no parallelism").
+2. A compact ordered list of the steps the implementation would go through (the candidate tasks, in dependency order, without the full template). Each step: one line, imperative.
+3. A clear recommendation: run `sdlc-impl` directly with the ordered list as the working plan, or fold the steps into a single implementation pass.
+
+Then **stop**. Do **not** proceed to Steps 3–6. Do not ask the user "should I still write the files?" — the gate is not user-overridable on a per-invocation basis. If the user explicitly insists ("write the files anyway, I want them as documentation"), comply once and note in §7 Notes of each task: `Compactness exception: parallelization gate failed; created on user request.`
+
+Examples of gate behavior:
+
+- Spec produces one candidate task (`T-001: Add health-check endpoint`) → gate fails → no files; recommend `sdlc-impl` directly.
+- Spec produces five candidates, dependency chain is `T-001 → T-002 → T-003 → T-004 → T-005` (every task depends on its predecessor) → gate fails → no files; recommend a single `sdlc-impl` pass with the ordered list.
+- Spec produces five candidates with waves `{T-001, T-002}` and `{T-003, T-004, T-005}` (T-003..T-005 each only depend on Wave 1) → gate passes → proceed.
+- Spec produces three candidates: `T-001` (infra setup), then `T-002` and `T-003` both depending only on `T-001` and independent of each other → gate passes (Wave 2 has two parallel tasks) → proceed.
 
 ### Step 3 — Clarify (only if needed)
 
@@ -134,7 +160,7 @@ Do **not** loop. One batch per skill invocation. Anything still unclear becomes 
 
 ### Step 4 — Plan checkpoint (gated)
 
-Before writing any file, present the proposed plan to the user via `AskUserQuestion`. The plan is a compact table — one row per candidate task — with:
+This step only runs if the **parallelization gate (Step 2.5) passed**. Before writing any file, present the proposed plan to the user via `AskUserQuestion`. The plan is a compact table — one row per candidate task — with:
 
 - ID (`T-NNN`).
 - Title.
@@ -247,6 +273,9 @@ Do **not** ask "ready to proceed?". Do **not** auto-invoke `sdlc-impl`.
 - Cross-feature epic planning — workflow is per-feature.
 - Auto-promoting `Status: Todo` to `In Progress` / `Done` — `sdlc-impl` and humans handle status.
 - Writing tasks in any language other than English.
+- Decomposing purely sequential work into task files (use a single `sdlc-impl` pass instead — see Step 2.5).
+- Producing a single task file as the only deliverable of an invocation (one task is not a decomposition — implement directly).
+- Overriding the parallelization gate silently — exceptions require an explicit user request and a `Compactness exception` note inside each affected task.
 - Inventing FR/NFR/AC IDs that don't exist in the spec.
 - Silently overwriting existing tasks — must ask the append/replace/revise question.
 - Generating tasks for items the spec lists in §10 Out of Scope or §4 Non-Goals.
@@ -272,6 +301,11 @@ Do **not** ask "ready to proceed?". Do **not** auto-invoke `sdlc-impl`.
 - **Task plan must reference a sibling feature's task** (cross-feature dependency): use the fully-qualified ID `FEAT-NNN-<slug>:T-NNN` in `Depends on`. Note in §7 Notes that the dependency is cross-feature.
 - **User invokes `sdlc-pm` mid-implementation**: respect the existing tasks. New tasks are appended with continued numbering. Do not retroactively rewrite the priorities of in-progress tasks unless asked.
 - **Plan checkpoint produces no must-have tasks**: that is a smell — the spec's must-have FRs aren't being delivered by anything. Re-check FR coverage before proceeding.
+- **Only one candidate task**: parallelization gate fails. Do not write a file. Tell the user the spec describes a single unit of work and recommend `sdlc-impl` directly with a one-line plan.
+- **All candidates form one sequential chain** (T-001 → T-002 → … → T-N): gate fails. Surface the ordered step list and recommend a single `sdlc-impl` pass. Splitting a chain across files only multiplies overhead.
+- **User insists on task files after a gate failure**: comply once; add `Compactness exception: parallelization gate failed; created on user request.` to §7 Notes of every generated task.
+- **Borderline case — two candidates with one depending on the other**: gate technically fails (no wave has ≥ 2 parallel tasks). Treat as sequential; recommend `sdlc-impl` in one pass.
+- **Mixed case — most tasks sequential but a small parallel pair exists**: gate passes (at least one wave has ≥ 2 tasks). Proceed normally; the summary should still flag that most of the chain is serial.
 
 ---
 
