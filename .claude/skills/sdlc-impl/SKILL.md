@@ -1,6 +1,6 @@
 ---
 name: sdlc-impl
-description: Use this skill when the user has an approved task file (T-NNN-{slug}.md) under docs/features/FEAT-NNN-{slug}/04-tasks/ and wants the code implemented (TS/Node/React). Triggers include "implement T-NNN", "code this task", "act as engineer", "pick up T-001", "build it", "let's write the code", "sdlc-impl". Reads the task file plus the ADR(s) and Feature Spec, scans existing codebase conventions, decomposes multi-layer work into UI / Frontend / Backend sub-stages with a soft gate between them (announce the transition, brief pause for objections, then continue), implements one sub-stage at a time, runs lint + typecheck + smoke run of existing unit tests on touched modules after each sub-stage, scaffolds empty test files matched to the Test Plan but does NOT fill tests (that is sdlc-tests). Never edits the task's Status field. On conflicts with the spec or ADR — stops and escalates, never silently overrides. Does NOT write the spec (sdlc-ba), ADR (sdlc-adr), task breakdown (sdlc-pm), reviews (sdlc-review), security audits (sdlc-security), tests (sdlc-tests), or diagrams (sdlc-docs).
+description: Use this skill when the user has an approved task file (T-NNN-{slug}.md) under docs/features/FEAT-NNN-{slug}/04-tasks/ and wants the code implemented (TS/Node/React). Triggers include "implement T-NNN", "code this task", "act as engineer", "pick up T-001", "build it", "let's write the code", "sdlc-impl". Reads the task file plus the ADR(s) and Feature Spec, scans existing codebase conventions, decomposes multi-layer work into UI / Frontend / Backend sub-stages with a soft gate between them (announce the transition, brief pause for objections, then continue), implements one sub-stage at a time, runs lint + typecheck + smoke run of existing unit tests on touched modules after each sub-stage, scaffolds empty test files matched to the Test Plan but does NOT fill tests (that is sdlc-tests). Enforces KISS and SOLID on every line written. Always reuses existing code — scans the codebase before writing any utility, hook, helper, or component. Applies the Boy Scout Rule: minor pre-existing issues (unused imports, dead code, trivial type gaps) are fixed silently in the same edit pass; major issues (cross-file SOLID violations, security smells, wrong abstractions) are surfaced to the user with an option to create a backlog task. Never edits the task's Status field. On conflicts with the spec or ADR — stops and escalates, never silently overrides. Does NOT write the spec (sdlc-ba), ADR (sdlc-adr), task breakdown (sdlc-pm), reviews (sdlc-review), security audits (sdlc-security), tests (sdlc-tests), or diagrams (sdlc-docs).
 ---
 
 # sdlc-impl — Implementer
@@ -140,7 +140,20 @@ For each sub-stage in the chosen order, run the inner pass below. After each sub
 
 1. **Re-scan** for the files the sub-stage touches. Open every file you intend to modify *before* writing to confirm current contents — never edit blind.
 2. **Plan the edits** mentally (or as a 3–5 line outline in chat). Group changes by file. Keep cross-file consistency: if a type is added in one file, every consumer in this sub-stage uses it.
-3. **Write code** that follows the codebase baseline from §2:
+3. **Write code** that follows the codebase baseline from §2 and the mandatory design principles below.
+
+   **KISS — Keep It Simple, Stupid.** Always prefer the simplest solution that satisfies the task's Definition of Done and the referenced AC. Before adding indirection, abstraction, or generalization, ask: "does the task require this?" If not, don't add it. A clever solution that the next developer needs 10 minutes to parse is the wrong solution. The correct solution is the dullest one that works.
+
+   **SOLID — apply all five principles as a code-writing checklist:**
+   - *Single Responsibility* — every class / module / function does one thing. If a service method is fetching, transforming, *and* persisting, split it.
+   - *Open / Closed* — extend behavior via new code (new strategy, new handler, new middleware), not by editing stable internals.
+   - *Liskov Substitution* — derived types / implementations must be drop-in replacements for their base. No surprising overrides that break callers.
+   - *Interface Segregation* — don't force a consumer to depend on methods it doesn't use. Prefer narrow, focused interfaces over fat ones.
+   - *Dependency Inversion* — depend on abstractions (interfaces, injection tokens), not on concrete implementations. New code follows the injection pattern already in the codebase.
+
+   **Reuse existing code — scan before writing.** Before writing any new utility, hook, helper, validator, component, or service method, search the codebase for an existing equivalent. If one exists: use it as-is, or extend it within its existing contract (Open/Closed). If an equivalent *almost* exists but has a slightly different signature, prefer a thin adapter over a parallel copy. Duplicate logic is technical debt introduced on day one; do not create it.
+
+   **Per-convention rules (naming, types, validation, etc.):**
    - **Naming** — match the project's casing, suffix conventions, and module boundaries. If the project uses `*.service.ts` / `*.repository.ts` suffixes, the new code uses them too.
    - **Types** — explicit return types on exported functions; no implicit `any`. Reuse existing domain types (don't redeclare a `User` if `src/types/user.ts` exists).
    - **Validation** — use the project's existing library (Zod / Yup / Joi). Don't introduce a parallel one.
@@ -191,6 +204,47 @@ When a sub-stage finishes (inner pass + verification per Step 6 done), print a c
 Then **proceed**. Do not block on a question. Do not call `AskUserQuestion`. The user has the conversation channel — if they reply with a stop / change instruction before the next sub-stage starts producing files, the skill yields. If they don't reply, the next sub-stage runs.
 
 (This is the "soft gate" by design. The hard variant — stop and explicitly ask — is only triggered by the conflict path in §4.2.)
+
+#### 4.4. Boy Scout Rule — leave the code cleaner than you found it
+
+While implementing, the skill **actively notices** pre-existing issues in files it opens — not just the lines it intends to change. When an issue is found, the skill classifies it as **minor** or **major** and acts accordingly.
+
+**Minor issues — fix immediately, without asking:**
+These are small, self-contained, zero-risk cleanups that fall clearly within the file the skill is already editing. Fix them in the same edit pass and mention them in the soft-gate summary under a "🧹 Scout fixes" heading.
+
+Examples of minor issues:
+- Unused import
+- Variable declared but never used
+- Obvious typo in a comment or string literal
+- Dead `console.log` / `debugger` left from a prior session
+- `any` type that is trivially replaceable with the actual type visible in the same file
+- Missing explicit return type on a private function (not an exported contract)
+- Inconsistent trailing comma / quote style fixable by the project's autoformatter
+- SOLID violation that is self-contained in ≤ 5 lines (e.g. a 2-line helper doing two things — split inline)
+- KISS violation that is obvious and local (e.g. a ternary-within-ternary that is clearer as an `if/else`)
+
+**Major issues — stop, report, and offer to create a task:**
+These are issues that require broader analysis, touch files outside the current sub-stage's scope, or could have unintended side effects if fixed blindly. The skill **does not fix them**. Instead, it:
+
+1. Surfaces the issue clearly: file, line range, one-sentence description, and why it qualifies as major.
+2. Asks the user via `AskUserQuestion` (one question):
+   - **Create a task for later** — the skill generates a pre-filled task stub (title + description + affected files) and writes it to `docs/features/_backlog/TECH-NNN-<slug>.md` (or the project's equivalent backlog path). Implementation continues.
+   - **Fix it now** — only if the user explicitly confirms. The skill then treats the affected files as in-scope for this sub-stage and proceeds as if they were always in the plan. Surfaces the change in the diff summary as a deviation.
+   - **Ignore** — note it in the summary and move on.
+
+Examples of major issues:
+- SOLID / KISS violation that spans multiple files or modules
+- Architectural drift that conflicts with the ADR
+- A function with 5+ responsibilities that would require touching 3+ files to properly split
+- Security smell (hardcoded secret, missing auth guard, improper validation) — if security, also flag for `sdlc-security`
+- Missing error handling on a critical path (not a trivially local fix)
+- A pattern that is clearly the wrong abstraction but replacing it would affect consumers not in this sub-stage's scope
+
+**Scout fix accounting:**
+- Scout fixes are listed in the soft-gate summary under a separate "🧹 Scout fixes" section (file, line range, what was fixed).
+- Scout fixes are NOT listed in "Files to Touch" retrospectively — they are a side effect of normal cleanup, not task scope changes.
+- Scout task stubs created for major issues are listed under "📋 Tasks created" in the final delivery summary (Step 5).
+- Scout fixes and task creation **never block the implementation**. They are recorded and the impl continues.
 
 ### Step 5 — Deliver
 
